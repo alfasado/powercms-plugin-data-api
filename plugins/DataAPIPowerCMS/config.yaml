@@ -1,0 +1,99 @@
+name: DataAPIPowerCMS
+id:   DataAPIPowerCMS
+version: 0.2
+author_name: Alfasado Inc.
+author_link: http://alfasado.net/
+description: <__trans phrase="Add Data API Endpoints for PowerCMS.">
+l10n_class: DataAPIPowerCMS::L10N
+applications:
+    data_api:
+        endpoints:
+            -
+                handler: DataAPIPowerCMS::DataAPI::_data_api_endpoint_banners
+                id: data_api_banners
+                requires_login: 0
+                route: '/sites/:site_id/banners'
+                verb: GET
+                version: 1
+            -
+                handler: DataAPIPowerCMS::DataAPI::_data_api_endpoint_get_banner
+                id: data_api_get_banner
+                requires_login: 0
+                route: '/sites/:site_id/banners/:campaign_id'
+                verb: GET
+                version: 1
+            -
+                handler: DataAPIPowerCMS::DataAPI::_data_api_endpoint_customobjects
+                id: data_api_banners
+                requires_login: 0
+                route: '/sites/:site_id/customobjects'
+                verb: GET
+                version: 1
+            -
+                handler: DataAPIPowerCMS::DataAPI::_data_api_endpoint_get_customobject
+                id: data_api_get_banner
+                requires_login: 0
+                route: '/sites/:site_id/customobjects/:customobject_id'
+                verb: GET
+                version: 1
+        resources:
+            campaign:
+                fields:
+                    - id
+                    - title
+                    - text
+                    - blog_id
+                    - image_id
+                    - movie_id
+                    - memo
+                    - publishing_on
+                    - period_on
+                    - created_on
+                    - modified_on
+                    - banner_width
+                    - banner_height
+                    - banner
+                    - movie
+                    - name: customFields
+                      from_object: DataAPIPowerCMS::DataAPI::customFields
+                    - name: author
+                      type: MT::DataAPI::Resource::DataType::Object
+                      fields:
+                        - id
+                        - displayName
+                        - userpicUrl
+                    - name: image_width
+                      from_object: DataAPIPowerCMS::DataAPI::image_width
+                    - name: image_height
+                      from_object: DataAPIPowerCMS::DataAPI::image_height
+                    - name: status
+                      from_object: DataAPIPowerCMS::DataAPI::status_text
+                    - name: tags
+                      from_object: DataAPIPowerCMS::DataAPI::tags
+            customobject:
+                fields:
+                    - id
+                    - name
+                    - body
+                    - keywords
+                    - authored_on
+                    - period_on
+                    - set_period
+                    - basename
+                    - modified_on
+                    - name: folder
+                      from_object: DataAPIPowerCMS::DataAPI::folder
+                    - name: customFields
+                      from_object: DataAPIPowerCMS::DataAPI::customFields
+                    - name: author
+                      type: MT::DataAPI::Resource::DataType::Object
+                      fields:
+                        - id
+                        - displayName
+                        - userpicUrl
+                    - name: status
+                      from_object: DataAPIPowerCMS::DataAPI::status_text
+                    - name: tags
+                      from_object: DataAPIPowerCMS::DataAPI::tags
+                    - name: permalink
+                      from_object: DataAPIPowerCMS::DataAPI::permalink
