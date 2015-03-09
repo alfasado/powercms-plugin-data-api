@@ -9,29 +9,71 @@ applications:
     data_api:
         endpoints:
             -
-                handler: DataAPIPowerCMS::DataAPI::_data_api_endpoint_banners
-                id: data_api_banners
+                handler: DataAPIPowerCMS::DataAPI::_data_api_endpoint_campaigns
+                id: data_api_campaigns
                 requires_login: 0
-                route: '/sites/:site_id/banners'
+                route: '/sites/:site_id/campaigns'
                 verb: GET
                 version: 1
             -
-                handler: DataAPIPowerCMS::DataAPI::_data_api_endpoint_get_banner
-                id: data_api_get_banner
+                handler: DataAPIPowerCMS::DataAPI::_data_api_endpoint_create_campaign
+                id: data_api_create_campaign
+                requires_login: 1
+                route: '/sites/:site_id/campaigns'
+                verb: POST
+                version: 1
+            -
+                handler: DataAPIPowerCMS::DataAPI::_data_api_endpoint_create_campaign
+                id: data_api_update_campaign
+                requires_login: 1
+                route: '/sites/:site_id/campaigns/:campaign_id'
+                verb: PUT
+                version: 1
+            -
+                handler: DataAPIPowerCMS::DataAPI::_data_api_endpoint_delete_campaign
+                id: data_api_delete_campaign
+                requires_login: 1
+                route: '/sites/:site_id/campaigns/:campaign_id'
+                verb: DELETE
+                version: 1
+            -
+                handler: DataAPIPowerCMS::DataAPI::_data_api_endpoint_get_campaign
+                id: data_api_get_campaign
                 requires_login: 0
-                route: '/sites/:site_id/banners/:campaign_id'
+                route: '/sites/:site_id/campaigns/:campaign_id'
                 verb: GET
                 version: 1
             -
                 handler: DataAPIPowerCMS::DataAPI::_data_api_endpoint_customobjects
-                id: data_api_banners
+                id: data_api_campaigns
                 requires_login: 0
                 route: '/sites/:site_id/customobjects'
                 verb: GET
                 version: 1
             -
+                handler: DataAPIPowerCMS::DataAPI::_data_api_endpoint_create_customobject
+                id: data_api_create_customobject
+                requires_login: 1
+                route: '/sites/:site_id/customobjects'
+                verb: POST
+                version: 1
+            -
+                handler: DataAPIPowerCMS::DataAPI::_data_api_endpoint_create_customobject
+                id: data_api_update_customobject
+                requires_login: 1
+                route: '/sites/:site_id/customobjects/:customobject_id'
+                verb: PUT
+                version: 1
+            -
+                handler: DataAPIPowerCMS::DataAPI::_data_api_endpoint_delete_customobject
+                id: data_api_delete_customobject
+                requires_login: 1
+                route: '/sites/:site_id/customobjects/:customobject_id'
+                verb: DELETE
+                version: 1
+            -
                 handler: DataAPIPowerCMS::DataAPI::_data_api_endpoint_get_customobject
-                id: data_api_get_banner
+                id: data_api_get_campaign
                 requires_login: 0
                 route: '/sites/:site_id/customobjects/:customobject_id'
                 verb: GET
@@ -52,10 +94,13 @@ applications:
                     - modified_on
                     - banner_width
                     - banner_height
-                    - banner
-                    - movie
+                    - name: banner
+                      from_object: DataAPIPowerCMS::DataAPI::get_banner
+                    - name: movie
+                      from_object: DataAPIPowerCMS::DataAPI::get_movie
                     - name: customFields
                       from_object: DataAPIPowerCMS::DataAPI::customFields
+                      to_object: DataAPIPowerCMS::DataAPI::to_customFields
                     - name: author
                       type: MT::DataAPI::Resource::DataType::Object
                       fields:
@@ -68,8 +113,23 @@ applications:
                       from_object: DataAPIPowerCMS::DataAPI::image_height
                     - name: status
                       from_object: DataAPIPowerCMS::DataAPI::status_text
+                      to_object: DataAPIPowerCMS::DataAPI::to_status
                     - name: tags
                       from_object: DataAPIPowerCMS::DataAPI::tags
+                      to_object: DataAPIPowerCMS::DataAPI::to_tags
+                updatable_fields: 
+                    - title
+                    - text
+                    - memo
+                    - publishing_on
+                    - period_on
+                    - created_on
+                    - modified_on
+                    - banner_width
+                    - banner_height
+                    - status
+                    - tags
+                    - customFields
             customobject:
                 fields:
                     - id
@@ -79,6 +139,7 @@ applications:
                     - authored_on
                     - period_on
                     - set_period
+                    - category_id
                     - basename
                     - modified_on
                     - name: folder
@@ -93,7 +154,21 @@ applications:
                         - userpicUrl
                     - name: status
                       from_object: DataAPIPowerCMS::DataAPI::status_text
+                      to_object: DataAPIPowerCMS::DataAPI::to_co_status
                     - name: tags
                       from_object: DataAPIPowerCMS::DataAPI::tags
+                      to_object: DataAPIPowerCMS::DataAPI::to_tags
                     - name: permalink
                       from_object: DataAPIPowerCMS::DataAPI::permalink
+                updatable_fields: 
+                    - name
+                    - body
+                    - keywords
+                    - authored_on
+                    - period_on
+                    - set_period
+                    - category_id
+                    - basename
+                    - status
+                    - tags
+                    - customFields

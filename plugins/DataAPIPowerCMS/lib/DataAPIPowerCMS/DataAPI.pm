@@ -8,13 +8,13 @@ use MT::DataAPI::Resource;
 
 use CustomFields::Util qw( get_meta );
 use lib qw( addons/PowerCMS.pack/lib );
-use PowerCMS::Util qw( is_user_can );
+use PowerCMS::Util qw( is_user_can current_ts valid_ts upload site_path file_basename file_extension );
 
 sub _data_api_endpoint_get_customobject {
     my ( $app, $endpoint ) = @_;
     my ( $blog, $customobject ) = context_objects( @_ ) or return;
     my $class = $customobject->class;
-    run_permission_filter( $app, 'data_api_list_permission_filter', $class ) or return;
+    run_permission_filter( $app, 'data_api_view_permission_filter', $class ) or return;
     my $user = $app->user;
     if ( $user ) {
         if (! __permission( $user, $blog, $class ) ) {
@@ -27,11 +27,11 @@ sub _data_api_endpoint_get_customobject {
     return $customobject;
 }
 
-sub _data_api_endpoint_get_banner {
+sub _data_api_endpoint_get_campaign {
     my ( $app, $endpoint ) = @_;
     my ( $blog, $banner ) = context_objects( @_ ) or return;
     my $class = 'campaign';
-    run_permission_filter( $app, 'data_api_list_permission_filter', $class ) or return;
+    run_permission_filter( $app, 'data_api_view_permission_filter', $class ) or return;
     my $user = $app->user;
     if ( $user ) {
         if (! __permission( $user, $blog, $class ) ) {
@@ -87,7 +87,6 @@ sub _data_api_endpoint_customobjects {
     } else {
         if ( my $status = $app->param( 'status' ) ) {
             my $status_int = MT->model( $class )->status_int( $status );
-            return $status_int;
             $terms->{ status } = $status_int;
         }
     }
@@ -131,7 +130,7 @@ sub _data_api_endpoint_customobjects {
     return [];
 }
 
-sub _data_api_endpoint_banners {
+sub _data_api_endpoint_campaigns {
     my ( $app, $endpoint ) = @_;
     my ( $blog ) = context_objects( @_ ) or return;
     my $class = 'campaign';
@@ -173,7 +172,7 @@ sub _data_api_endpoint_banners {
         $terms->{ status } = 2;
     } else {
         if ( my $status = $app->param( 'status' ) ) {
-            my $status_int = __campaign_status_int( $status );
+            my $status_int = __status_int( $status );
             return $status_int;
             $terms->{ status } = $status_int;
         }
@@ -218,6 +217,214 @@ sub _data_api_endpoint_banners {
     };
 }
 
+sub _data_api_endpoint_create_customobject {
+    my ( $app, $endpoint ) = @_;
+    my ( $blog, $customobject ) = context_objects( @_ ) or return;
+    my $class = $app->param( 'class' ) || 'customobject';
+    my $author = $app->user;
+    if (! __permission( $author, $blog, $class ) ) {
+        return;
+    }
+    my $orig_customobject = $customobject;
+    if (! $orig_customobject ) {
+        $orig_customobject = $app->model( $class )->new;
+        $orig_customobject->set_values(
+            {   blog_id   => $blog->id,
+                author_id => $author->id,
+            }
+        );
+    }
+    if ( $orig_customobject && ( $orig_customobject->class ne $class ) ) {
+        return;
+    }
+    $orig_customobject->class( $class );
+    my $plugin_customobject = MT->component( $class );
+    my $cfg_plugin;
+    if ( $class eq 'customobject' ) {
+        $cfg_plugin = MT->component( 'CustomObjectConfig' );
+    } else {
+        $cfg_plugin = $plugin_customobject;
+    }
+    my $new_customobject = $app->resource_object( 'customobject', $orig_customobject )
+        or return;
+    $new_customobject->class( $class );
+    if (! $new_customobject->status ) {
+        my $default_status = $cfg_plugin->get_config_value( 'default_status', 'blog:'. $blog->id );
+        $orig_customobject->status( $default_status );
+        $new_customobject->status( $default_status );
+    }
+    save_object( $app, $class, $new_customobject, $orig_customobject, ) or return;
+    $orig_customobject->clear_cache();
+    require CustomObject::Plugin;
+    CustomObject::Plugin::_cms_post_save_customobject( undef, $app, $new_customobject, $orig_customobject );
+    my $message;
+    if (! $customobject ) {
+        $message = $plugin_customobject->translate( "[_1] '[_2]' (ID:[_3]) created by '[_4]'", $new_customobject->class_label, $new_customobject->name, $new_customobject->id, $author->name );
+    } else {
+        $message = $plugin_customobject->translate( "[_1] '[_2]' (ID:[_3]) edited by '[_4]'", $new_customobject->class_label, $new_customobject->name, $new_customobject->id, $author->name );
+    }
+    $app->log( {
+        message => $message,
+        blog_id => $orig_customobject->blog_id,
+        author_id => $author->id,
+        class => $class,
+        level => MT::Log::INFO(),
+    } );
+    return $new_customobject;
+}
+
+sub _data_api_endpoint_delete_customobject {
+    my ( $app, $endpoint ) = @_;
+    my ( $blog, $customobject ) = context_objects( @_ ) or return;
+    my $class = $app->param( 'class' ) || 'customobject';
+    run_permission_filter( $app, 'data_api_delete_permission_filter', $class ) or return;
+    my $author = $app->user;
+    if (! __permission( $author, $blog, $class ) ) {
+        return;
+    }
+    $customobject->remove or die $customobject->errstr;
+    require CustomObject::Plugin;
+    CustomObject::Plugin::_cms_post_delete_customobject( undef, $app, $customobject, $customobject );
+    my $plugin_customobject = MT->component( $class );
+    my $message = $plugin_customobject->translate( "[_1] '[_2]' (ID:[_3]) deleted by '[_4]'",
+        $customobject->class_label, $customobject->name, $customobject->id, $author->name );
+    $app->log( {
+        message => $message,
+        blog_id => $customobject->blog_id,
+        author_id => $author->id,
+        class => $class,
+        level => MT::Log::INFO(),
+    } );
+    return $customobject;
+}
+
+sub _data_api_endpoint_create_campaign {
+    my ( $app, $endpoint ) = @_;
+    my ( $blog, $banner ) = context_objects( @_ ) or return;
+    my $class = 'campaign';
+    require Campaign::Plugin;
+    require Campaign::Campaign;
+    if (! Campaign::Plugin::_campaign_permission( $blog ) ) {
+        return;
+    }
+    my $author = $app->user;
+    my $orig_campaign = $banner;
+    if (! $orig_campaign ) {
+        $orig_campaign = $app->model( $class )->new;
+        $orig_campaign->set_values(
+            {   blog_id   => $blog->id,
+                author_id => $author->id,
+            }
+        );
+    }
+    my $new_campaign = $app->resource_object( 'campaign', $orig_campaign )
+        or return;
+    my $site_path = site_path( $blog );
+    my $plugin_campaign = MT->component( 'Campaign' );
+    my $banner_directory = $plugin_campaign->get_config_value( 'banner_directory', 'blog:'. $blog->id );
+    if (! $new_campaign->status ) {
+        my $default_status = $plugin_campaign->get_config_value( 'default_status', 'blog:'. $blog->id );
+        $orig_campaign->status( $default_status );
+        $new_campaign->status( $default_status );
+    }
+    my $upload_dir = File::Spec->catdir( $site_path, $banner_directory );
+    require MT::Asset;
+    if ( $app->param( 'image' ) ) {
+        my $rename;
+        my $file_name = file_basename( $app->param->upload( 'image' ) );
+        my $asset_pkg = MT::Asset->handler_for_file( $file_name );
+        if ( $asset_pkg eq 'MT::Asset::Image' ) {
+            my %params = ( author  => $author,
+                           label   => $orig_campaign->title,
+                           rename  => 1,
+                           singler => 1,
+                          );
+            my $image = upload( $app, $blog, 'image', $upload_dir, \%params );
+            my $original;
+            if ( my $id = $orig_campaign->image_id ) {
+                $original = $asset_pkg->load( $id );
+            }
+            if ( defined $image ) {
+                $orig_campaign->image_id( $image->id );
+                if ( $original ) {
+                    if ( $original->id != $image->id ) {
+                        $original->remove or die $original->errstr;
+                    }
+                }
+            }
+        }
+    }
+    if ( $app->param( 'movie' ) ) {
+        my $rename;
+        my $file_name = file_basename( $app->param->upload( 'movie' ) );
+        my $asset_pkg = MT::Asset->handler_for_file( $file_name );
+        if ( ( $asset_pkg eq 'MT::Asset::Video' )
+          || ( file_extension( $file_name ) eq 'swf' ) ) {
+            my %params = ( author  => $author,
+                           label   => $orig_campaign->title,
+                           rename  => 1,
+                           singler => 1,
+                          );
+            my $movie = upload( $app, $blog, 'movie', $upload_dir, \%params );
+            if ( defined $movie ) {
+                $orig_campaign->movie_id( $movie->id );
+            }
+        }
+    }
+    if (! $orig_campaign->basename ) {
+        $orig_campaign->basename( Campaign::Campaign::make_unique_basename( $orig_campaign ) );
+        $new_campaign->basename( Campaign::Campaign::make_unique_basename( $new_campaign ) );
+    }
+    save_object( $app, 'campaign', $new_campaign, $orig_campaign, ) or return;
+    $orig_campaign->clear_cache();
+    my $message;
+    if (! $banner ) {
+        $message = $plugin_campaign->translate( 'Campaign \'[_1]\' (ID:[_2]) created by \'[_3]\'', $new_campaign->title, $new_campaign->id, $author->name );
+    } else {
+        $message = $plugin_campaign->translate( 'Campaign \'[_1]\' (ID:[_2]) edited by \'[_3]\'', $new_campaign->title, $new_campaign->id, $author->name );
+    }
+    $app->log( {
+        message => $message,
+        blog_id => $orig_campaign->blog_id,
+        author_id => $author->id,
+        class => 'campaign',
+        level => MT::Log::INFO(),
+    } );
+    return $new_campaign;
+}
+
+sub _data_api_endpoint_delete_campaign {
+    my ( $app, $endpoint ) = @_;
+    my ( $blog, $banner ) = context_objects( @_ ) or return;
+    my $class = 'campaign';
+    require Campaign::Plugin;
+    run_permission_filter( $app, 'data_api_delete_permission_filter', $class ) or return;
+    if (! Campaign::Plugin::_campaign_permission( $blog ) ) {
+        return;
+    }
+    $banner->remove or die $banner->errstr;
+    my $author = $app->user;
+    my $plugin_campaign = MT->component( 'Campaign' );
+    my $message = $plugin_campaign->translate( 'Campaign \'[_1]\' (ID:[_2]) deleted by \'[_3]\'',
+        $banner->title, $banner->id, $author->name );
+    $app->log( {
+        message => $message,
+        blog_id => $banner->blog_id,
+        author_id => $author->id,
+        class => 'campaign',
+        level => MT::Log::INFO(),
+    } );
+    return $banner;
+}
+
+sub to_tags {
+    my ( $hash, $obj ) = @_;
+    if ( ref $hash->{ tags } eq 'ARRAY' ) {
+        $obj->set_tags( @{ $hash->{tags} }, { force => 1 } );
+    }
+    return;
+}
+
 sub _none_match {
     return {
         totalResults => 0,
@@ -247,6 +454,22 @@ sub folder {
     return $path2folder;
 }
 
+sub get_banner {
+    my ( $obj, $hash, $field, $stash ) = @_;
+    if ( my $image = $obj->image ) {
+        return $image->url;
+    }
+    return '';
+}
+
+sub get_movie {
+    my ( $obj, $hash, $field, $stash ) = @_;
+    if ( my $movie = $obj->movie ) {
+        return $movie->url;
+    }
+    return '';
+}
+
 sub customFields {
     my ( $obj, $hash, $field, $stash ) = @_;
     require CustomFields::DataAPI;
@@ -257,6 +480,21 @@ sub customFields {
             };
         } @{ CustomFields::DataAPI::custom_fields( $obj ) }
     ];
+}
+
+sub to_customFields {
+    my ( $hash, $obj ) = @_;
+    require CustomFields::DataAPI;
+    my %values = ();
+    for my $v ( @{ $hash->{ customFields } || [] } ) {
+        $values{ $v->{ basename } } = $v->{ value };
+    }
+    for my $f ( @{ CustomFields::DataAPI::custom_fields( $obj ) } ) {
+        my $bn = $f->basename;
+        $obj->meta( 'field.' . $bn, $values{ $bn } )
+            if exists $values{ $bn };
+    }
+    return;
 }
 
 sub tags {
@@ -324,7 +562,27 @@ sub __folder_path_to_obj {
     @cats;
 }
 
-sub __campaign_status_int {
+sub to_status {
+    my ( $hash, $obj ) = @_;
+    if ( my $status = $hash->{ status } ) {
+        $status = __status_int( $status );
+        $hash->{ status } = $status;
+        $obj->status( $status );
+    }
+    return;
+}
+
+sub to_co_status {
+    my ( $hash, $obj ) = @_;
+    if ( my $status = $hash->{ status } ) {
+        $status = $obj->status_int( $status );
+        $hash->{ status } = $status;
+        $obj->status( $status );
+    }
+    return;
+}
+
+sub __status_int {
     my $status = shift;
     $status = uc( $status );
     return 1 if $status eq 'DRAFT' || $status eq 'HOLD';
